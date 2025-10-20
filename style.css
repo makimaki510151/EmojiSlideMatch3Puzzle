@@ -5,16 +5,27 @@ body {
     align-items: center;
     background-color: #f0f0f0;
     transition: background-color 0.5s;
-    
-    /* ★修正点: 横スクロールと誤操作を防ぐ */
-    margin: 0; /* bodyのデフォルトマージンを削除 */
-    padding: 10px; /* 小さな画面でコンテンツが端に寄りすぎるのを防ぐ */
-    min-height: 100vh; /* 画面の高さいっぱいを占める */
-    overflow-x: hidden; /* 横方向のスクロールを完全に禁止 */
-    touch-action: pan-y; /* 縦方向のスクロールは許可するが、横方向はOSの制御を減らす */
+    /* ★追加: はみ出しによる横スクロールを防止 */
+    margin: 0;
+    padding: 10px;
+    overflow-x: hidden;
 }
 
-/* 簡易コンボモードのスタイルを削除 */
+/* 簡易コンボモード中の派手な演出 */
+body.easy-mode {
+    background-color: #ffcc00;
+    animation: flashy-background 1s infinite alternate;
+}
+
+@keyframes flashy-background {
+    from {
+        background-color: #ffcc00;
+    }
+
+    to {
+        background-color: #ff66b2;
+    }
+}
 
 #game-container {
     padding: 20px;
@@ -22,11 +33,14 @@ body {
     border-radius: 10px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     transition: box-shadow 0.5s;
-    
-    /* ★修正点: 最大幅を設定し、画面幅に合わせて縮小 */
-    width: 100%; 
-    max-width: 550px; /* PC/タブレットでの最大幅を設定 */
-    box-sizing: border-box; /* paddingを含めて幅を計算 */
+    /* ★修正: レスポンシブ対応とPCでの最大幅設定 */
+    width: 100%;
+    max-width: 550px;
+    box-sizing: border-box;
+}
+
+#game-container.easy-mode {
+    box-shadow: 0 0 50px rgba(255, 0, 0, 0.8);
 }
 
 #score-board {
@@ -41,55 +55,74 @@ body {
     text-align: center;
     font-size: 2em;
     font-weight: bold;
-    color: #e67e22; 
-    min-height: 1.5em; 
+    color: #e67e22;
+    min-height: 1.5em;
     margin-bottom: 10px;
     transition: transform 0.2s ease-out, opacity 0.2s ease-out;
 }
+
 #combo-display.active {
     animation: combo-pop 0.5s ease-out forwards;
 }
 
 @keyframes combo-pop {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.2); opacity: 1; }
-    100% { transform: scale(1); opacity: 1; }
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
 
 
 #board {
     display: grid;
-    /* TILE_SIZE (62px * 8 = 496px) */
+    /* ★修正: 8列を均等に分割し、タイルがボード幅にぴったり収まるようにする */
+    grid-template-columns: repeat(8, 1fr);
+    width: 100%;
+    /* ボード幅をコンテナに合わせる */
+    max-width: 500px;
+    /* PCでのボード最大幅 */
+    margin: 0 auto;
     border: 3px solid #333;
     background-color: #ccc;
-    position: relative; 
-    
-    /* ★修正点: 小さい画面に対応 */
-    width: min-content; /* グリッドの内容に幅を合わせる */
-    margin: 0 auto; /* 中央寄せ */
+    position: relative;
+    box-sizing: border-box;
+    /* 枠線を含めてサイズを計算 */
 }
 
 .tile {
-    width: 60px;
-    height: 60px;
+    /* ★修正: 固定幅を削除し、アスペクト比で正方形を維持 */
+    /* width: 60px; height: 60px; を削除 */
+    aspect-ratio: 1 / 1;
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 40px;
+    /* ★追加: フォントサイズを動的かつ最大45pxに制限 */
+    font-size: min(6vw, 45px);
     cursor: grab;
     user-select: none;
     background-color: #fff;
     border: 1px solid #ddd;
     box-sizing: border-box;
-    transition: transform 0.2s ease-out, opacity 0.3s ease-in-out; 
-    touch-action: none; 
+    transition: transform 0.2s ease-out, opacity 0.3s ease-in-out;
+
+    touch-action: none;
 }
 
 /* 選択/ドラッグ中のタイル */
 .tile.selected {
     opacity: 0.8;
     z-index: 20;
-    border: 2px solid #3498db; /* スライド開始時の視覚フィードバックを強化 */
+    border: 2px solid #3498db;
 }
 
 /* 消える時の演出用クラス */
@@ -98,53 +131,4 @@ body {
     transform: scale(0.1);
 }
 
-/* ゲームオーバー画面のスタイル */
-#game-over-overlay {
-    display: none; /* 初期状態では非表示 */
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.85);
-    z-index: 100;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
-}
-
-#game-over-content {
-    background-color: white;
-    padding: 40px 60px;
-    border-radius: 15px;
-    text-align: center;
-    box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
-}
-
-#game-over-content h2 {
-    color: #e74c3c;
-    font-size: 3em;
-    margin-bottom: 15px;
-}
-
-#final-score {
-    font-size: 4em;
-    font-weight: bold;
-    color: #3498db;
-    margin-bottom: 30px;
-}
-
-#game-over-content button {
-    padding: 15px 30px;
-    font-size: 1.5em;
-    background-color: #2ecc71;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-#game-over-content button:hover {
-    background-color: #27ae60;
-}
+/* 以前の`.tile.dragging`クラスは、`.tile.selected`に統合されるため削除 */
