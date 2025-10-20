@@ -1,33 +1,18 @@
 <!DOCTYPE html>
 <html lang="ja">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>絵文字スライドマッチ3</title>
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
     <h1>絵文字スライドマッチ3パズル</h1>
     <div id="game-container">
-        <div id="score-board">
-            スコア: <span id="total-score">0</span><br>
-            周回数: <span id="loop-count">0</span> /
-            最大連鎖スコア: <span id="max-slide-score">0</span>
-        </div>
-
-        <div id="clear-rule">
-            【ルール】スコアが1000の倍数から**0点ぴったり**になるとクリア！
-        </div>
-
-        <div id="combo-display"></div>
-
+        <div id="score-board">スコア: <span id="score">0</span></div>
+        <div id="combo-display"></div> 
+        
         <div id="board">
-        </div>
-
-        <div id="score-log">
-            <h2>スコアログ</h2>
         </div>
     </div>
 
@@ -39,15 +24,6 @@
         </div>
     </div>
 
-    <div id="game-clear-overlay">
-        <div id="game-clear-content">
-            <h2>ゲームクリア！</h2>
-            <div id="clear-details"></div>
-            <button onclick="location.reload()">次の周回へ</button>
-        </div>
-    </div>
-
     <script src="script.js"></script>
 </body>
-
 </html>
