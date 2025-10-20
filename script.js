@@ -4,14 +4,18 @@ const EMOJIS = ['🍎', '🍌', '🍇', '🍓'];
 const BASE_SCORE = 10;
 
 const boardElement = document.getElementById('board');
-const scoreElement = document.getElementById('score');
+// ★修正: DOM要素の取得
+const totalScoreElement = document.getElementById('total-score');
+const maxSlideScoreElement = document.getElementById('max-slide-score'); // ★追加
 const comboDisplayElement = document.getElementById('combo-display');
 const gameOverOverlay = document.getElementById('game-over-overlay');
 const finalScoreElement = document.getElementById('final-score');
 
 // --- ゲーム状態 ---
 let board = [];
-let score = 0;
+let totalScore = 0; // ★修正: 変数名をtotalScoreに変更
+let maxSlideScore = 0; // ★追加: 1回のスライドでの最高スコア
+let currentSlideScore = 0; // ★追加: 現在の連鎖で獲得したスコア
 let selectedTile = null;
 let isProcessing = false;
 let currentCombo = 0;
@@ -20,6 +24,54 @@ let currentCombo = 0;
 let startX = 0;
 let startY = 0;
 let currentTileElement = null;
+
+// --- 効果音 (Web Audio API) ---
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContext();
+
+/**
+ * コードでSEを生成・再生する汎用関数
+ */
+function playSynthSound(frequency, duration, type = 'square', volume = 0.5, decay = 0.1) {
+    if (gameOverOverlay.classList.contains('active')) return;
+
+    // AudioContextがサスペンド状態（ブラウザの自動再生ポリシー）なら再開を試みる
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+    
+    gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + decay);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + duration);
+}
+
+// --- SEプリセット ---
+const SE = {
+    slide: () => playSynthSound(300, 0.05, 'sine', 0.2, 0.05),
+    match: (len) => {
+        let freq = 440 + len * 100; 
+        playSynthSound(freq, 0.1, 'square', 0.4, 0.15);
+    },
+    combo: (combo) => {
+        let freq = 550 + combo * 80;
+        playSynthSound(freq, 0.1, 'triangle', 0.5, 0.2);
+    },
+    gameOver: () => {
+        playSynthSound(100, 0.8, 'sawtooth', 0.6, 0.7);
+        playSynthSound(75, 0.8, 'sawtooth', 0.6, 0.7);
+    }
+};
 
 // --- 初期化 ---
 
@@ -37,7 +89,14 @@ function initGame() {
         fillEmptyTiles();
     }
 
-    // ★追加: ゲームオーバーを非表示に
+    // ★修正: スコアの初期化
+    totalScore = 0;
+    maxSlideScore = 0;
+    totalScoreElement.textContent = totalScore;
+    maxSlideScoreElement.textContent = maxSlideScore;
+    currentSlideScore = 0;
+    
+    // ゲームオーバーを非表示に
     gameOverOverlay.classList.remove('active');
 
     drawBoard();
@@ -67,7 +126,7 @@ function drawBoard() {
         }
     }
 
-    // ★追加: 盤面描画後にゲームオーバー判定
+    // 盤面描画後にゲームオーバー判定
     if (!checkPossibleMoves()) {
         showGameOver();
     }
@@ -137,6 +196,7 @@ function handleDragEnd(event) {
 
     if (isAdjacent(r1, c1, r2, c2) && r2 >= 0 && r2 < GRID_SIZE && c2 >= 0 && c2 < GRID_SIZE) {
         isProcessing = true;
+        SE.slide(); 
         swapTiles(r1, c1, r2, c2);
     }
 
@@ -185,6 +245,8 @@ function swapTiles(r1, c1, r2, c2) {
         tile2.style.transform = '';
 
         currentCombo = 0;
+        // ★修正: 連鎖開始前に現在のスライドスコアをリセット
+        currentSlideScore = 0;
         swapMatchCycle(r1, c1, r2, c2);
     }, 200);
 }
@@ -200,9 +262,19 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
         currentCombo++;
 
         updateComboDisplay(currentCombo);
+        
+        if (currentCombo > 1) {
+            SE.combo(currentCombo); 
+        } else {
+            SE.match(matches.length); 
+        }
+
+        const scoreForThisStep = updateScore(matches); // ★修正: スコア計算結果を受け取る
+
+        // ★追加: 連鎖スコアを更新
+        currentSlideScore += scoreForThisStep;
 
         removeMatches(matches);
-        updateScore(matches);
 
         setTimeout(() => {
             gravity();
@@ -223,14 +295,20 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
             const c1 = originalC1;
             const r2 = originalR2;
             const c2 = originalC2;
-
             [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
             drawBoard();
         }
         isProcessing = false;
         updateComboDisplay(0);
+        
+        // ★追加: 連鎖が終了した時点で最高点を更新
+        if (currentSlideScore > maxSlideScore) {
+            maxSlideScore = currentSlideScore;
+            maxSlideScoreElement.textContent = maxSlideScore;
+        }
+        currentSlideScore = 0;
 
-        // ★追加: ターン終了時にゲームオーバー判定
+        // ターン終了時にゲームオーバー判定
         if (!checkPossibleMoves()) {
             showGameOver();
         }
@@ -308,9 +386,11 @@ function removeMatches(matches) {
 
 /**
  * スコアを更新
+ * ★修正: この連鎖ステップで獲得したスコアを返すように変更
+ * @returns {number} この連鎖ステップで獲得したスコア
  */
 function updateScore(matches) {
-    let totalScore = 0;
+    let scoreForThisStep = 0; // この関数内で計算するスコア
     const processedCrossMatches = new Set();
 
     // クロスボーナス
@@ -325,7 +405,7 @@ function updateScore(matches) {
                 if (colMatches.length > 0) {
                     const centerKey = `${m.r},${c}`;
                     if (!processedCrossMatches.has(centerKey)) {
-                        totalScore += BASE_SCORE * 3;
+                        scoreForThisStep += BASE_SCORE * 3;
                         processedCrossMatches.add(centerKey);
                     }
                 }
@@ -349,16 +429,21 @@ function updateScore(matches) {
         } else if (m.len >= 5) {
             groupScore *= 2;
         }
-        totalScore += Math.floor(groupScore);
+        scoreForThisStep += Math.floor(groupScore);
     });
 
     // コンボボーナス
     if (currentCombo > 1) {
-        totalScore *= (1 + currentCombo * 0.2);
+        scoreForThisStep *= (1 + currentCombo * 0.2);
     }
 
-    score += Math.floor(totalScore);
-    scoreElement.textContent = score;
+    const finalScoreForThisStep = Math.floor(scoreForThisStep);
+    
+    // 合計スコアを更新
+    totalScore += finalScoreForThisStep;
+    totalScoreElement.textContent = totalScore;
+    
+    return finalScoreForThisStep; // このステップのスコアを返す
 }
 
 function updateComboDisplay(combo) {
@@ -397,7 +482,7 @@ function fillEmptyTiles() {
 
 
 /**
- * ★追加: ゲームオーバー判定 (動かせる手があるかチェック)
+ * ゲームオーバー判定 (動かせる手があるかチェック)
  */
 function checkPossibleMoves() {
     // 全てのタイルとその隣のタイルを交換してみて、マッチが成立するかチェックする
@@ -424,7 +509,7 @@ function checkPossibleMoves() {
 }
 
 /**
- * ★追加: 仮ボードでマッチをチェック
+ * 仮ボードでマッチをチェック
  */
 function checkTempMatches(tempBoard) {
     const minLen = 3;
@@ -476,10 +561,13 @@ function checkTempMatches(tempBoard) {
 }
 
 /**
- * ★追加: ゲームオーバー画面を表示
+ * ゲームオーバー画面を表示
  */
 function showGameOver() {
-    finalScoreElement.textContent = `最終スコア: ${score}`;
+    SE.gameOver(); 
+
+    // ★修正: 合計スコアを表示
+    finalScoreElement.textContent = `最終スコア: ${totalScore}`;
     gameOverOverlay.classList.add('active');
 }
 

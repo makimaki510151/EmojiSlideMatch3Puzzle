@@ -23,10 +23,23 @@ body {
 
 #score-board {
     margin-bottom: 10px;
-    font-size: 1.5em;
     font-weight: bold;
     text-align: center;
     color: #333;
+    /* ★修正: スコア表示を縦に並べるためのFlexbox設定 */
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 0 10px; 
+}
+/* ★追加: 個々のスコア行の調整 */
+#score-board div {
+    font-size: 1.2em;
+}
+/* ★追加: 合計スコアを少し目立たせる */
+#total-score {
+    font-size: 1.2em;
+    color: #e74c3c;
 }
 
 #combo-display {
@@ -67,13 +80,11 @@ body {
     width: 100%;
     margin: 0 auto;
 
-    /* ★最重要修正: gapはタイル間の隙間用 */
     gap: 1px;
-    /* ★修正: 外枠を再現するためにpaddingを再度追加 */
-    padding: 3px;
+    padding: 0;
 
     background-color: #333;
-    /* 隙間と外枠の色 */
+    border: 3px solid #333;
     position: relative;
     box-sizing: border-box;
 }
