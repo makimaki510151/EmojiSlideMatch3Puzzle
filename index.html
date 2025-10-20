@@ -10,9 +10,20 @@
     <h1>絵文字スライドマッチ3パズル</h1>
     <div id="game-container">
         <div id="score-board">スコア: <span id="score">0</span></div>
-        <div id="combo-display"></div> <div id="board">
-            </div>
+        <div id="combo-display"></div> 
+        
+        <div id="board">
+        </div>
     </div>
+
+    <div id="game-over-overlay">
+        <div id="game-over-content">
+            <h2>ゲームオーバー！</h2>
+            <div id="final-score"></div>
+            <button onclick="location.reload()">もう一度プレイ</button>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>

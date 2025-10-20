@@ -1,58 +1,100 @@
 // --- ゲーム設定 ---
 const GRID_SIZE = 8;
-const TILE_SIZE = 62; // タイルのサイズ (60px) + ボーダー (1px*2)
+const TILE_SIZE = 62; 
 const EMOJIS = ['🍎', '🍌', '🍇', '🍓']; 
 const BASE_SCORE = 10;
+
+// --- DOM要素 ---
 const boardElement = document.getElementById('board');
 const scoreElement = document.getElementById('score');
 const comboDisplayElement = document.getElementById('combo-display'); 
+const gameOverOverlay = document.getElementById('game-over-overlay');
+const finalScoreElement = document.getElementById('final-score');
 
 // --- ゲーム状態 ---
 let board = [];
 let score = 0;
-let selectedTile = null; 
 let isProcessing = false; 
 let currentCombo = 0; 
+let isGameOver = false; // ゲームオーバーステータスを追加
 
 // --- スライド操作用の変数 ---
 let startX = 0;
 let startY = 0;
 let currentTileElement = null;
 
-// --- 初期化 ---
+// --- 効果音 (Web Audio API) ---
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContext();
 
 /**
- * ランダムな絵文字を取得
+ * コードでSEを生成・再生する汎用関数
+ * @param {number} frequency - 周波数 (Hz)
+ * @param {number} duration - 再生時間 (秒)
+ * @param {string} type - 波形 ('sine', 'square', 'sawtooth', 'triangle')
+ * @param {number} volume - 音量 (0.0 to 1.0)
+ * @param {number} decay - 減衰時間 (秒)
  */
+function playSynthSound(frequency, duration, type = 'square', volume = 0.5, decay = 0.1) {
+    if (isGameOver) return; // ゲームオーバー中は再生しない
+
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+    
+    gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+    // 減衰
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + decay);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + duration);
+}
+
+// --- SEプリセット ---
+const SE = {
+    slide: () => playSynthSound(300, 0.05, 'sine', 0.2, 0.05),
+    match: (len) => {
+        let freq = 440 + len * 100; // マッチ数に応じて音程を上げる
+        playSynthSound(freq, 0.1, 'square', 0.4, 0.15);
+    },
+    combo: (combo) => {
+        let freq = 550 + combo * 80;
+        playSynthSound(freq, 0.1, 'triangle', 0.5, 0.2);
+    },
+    gameOver: () => {
+        playSynthSound(100, 0.8, 'sawtooth', 0.6, 0.7);
+        playSynthSound(75, 0.8, 'sawtooth', 0.6, 0.7);
+    }
+};
+
+
+// --- 初期化 ---
+
 function getRandomEmoji() {
     return EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
 }
 
-/**
- * ボードを初期化し、HTMLに描画
- */
 function initGame() {
-    // CSS Gridの設定
     boardElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${TILE_SIZE - 2}px)`; 
 
-    // 衝突のない初期ボードを生成
     board = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null).map(getRandomEmoji));
     
-    // 初期マッチを削除し、新しい絵文字で補充 (安定化)
-    while (checkAllMatches().length > 0) {
-        removeMatches(checkAllMatches());
+    // 初期安定化
+    while (checkAllMatches(3).length > 0) { 
+        removeMatches(checkAllMatches(3));
         gravity();
         fillEmptyTiles();
     }
     
     drawBoard();
-    updateComboDisplay(0); 
+    checkGameOver(); // 初期状態でゲームオーバー判定
 }
 
-/**
- * ボード配列からHTMLにタイルを描画
- * ★修正点: drawBoardは常にDOMをボード配列の内容に完全に同期させる役割を持つ
- */
 function drawBoard() {
     boardElement.innerHTML = '';
     for (let r = 0; r < GRID_SIZE; r++) {
@@ -63,9 +105,6 @@ function drawBoard() {
     }
 }
 
-/**
- * タイルのDOM要素を生成
- */
 function createTileElement(emoji, r, c) {
     const tile = document.createElement('div');
     tile.classList.add('tile');
@@ -79,16 +118,13 @@ function createTileElement(emoji, r, c) {
     return tile;
 }
 
-// --- スライド操作処理 (変更なし) ---
+// --- スライド操作 ---
 
-/**
- * ドラッグ開始
- */
 function handleDragStart(event) {
-    if (isProcessing) return; 
+    if (isProcessing || isGameOver) return; // ゲームオーバー中は操作不可
 
-    const clientX = event.clientX || event.touches[0].clientX;
-    const clientY = event.clientY || event.touches[0].clientY;
+    const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+    const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
 
     startX = clientX;
     startY = clientY;
@@ -102,18 +138,12 @@ function handleDragStart(event) {
     document.addEventListener('touchend', handleDragEnd);
 }
 
-/**
- * ドラッグ移動 (変更なし)
- */
 function handleDragMove(event) {
     if (event.cancelable) {
         event.preventDefault();
     }
 }
 
-/**
- * ドラッグ終了 (スワップの判定と実行)
- */
 function handleDragEnd(event) {
     if (!currentTileElement) return;
 
@@ -152,15 +182,13 @@ function handleDragEnd(event) {
 
     if (isAdjacent(r1, c1, r2, c2) && r2 >= 0 && r2 < GRID_SIZE && c2 >= 0 && c2 < GRID_SIZE) {
         isProcessing = true; 
+        SE.slide(); // スライドSE
         swapTiles(r1, c1, r2, c2);
     } 
 
     resetDragListeners();
 }
 
-/**
- * ドラッグ関連のイベントリスナーを解除 (変更なし)
- */
 function resetDragListeners() {
     currentTileElement = null;
     document.removeEventListener('mousemove', handleDragMove);
@@ -169,166 +197,204 @@ function resetDragListeners() {
     document.removeEventListener('touchend', handleDragEnd);
 }
 
-/**
- * 2つの座標が隣接しているかチェック (変更なし)
- */
 function isAdjacent(r1, c1, r2, c2) {
     const dr = Math.abs(r1 - r2);
     const dc = Math.abs(c1 - c2);
     return (dr === 1 && dc === 0) || (dr === 0 && dc === 1);
 }
 
-/**
- * タイルを交換し、マッチングチェックと処理を行う
- * ★修正点: アニメーション完了後、DOM要素のテキスト内容のみを交換し、データ属性は維持する。
- */
 function swapTiles(r1, c1, r2, c2) {
     
     const tile1 = document.querySelector(`.tile[data-r="${r1}"][data-c="${c1}"]`);
     const tile2 = document.querySelector(`.tile[data-r="${r2}"][data-c="${c2}"]`);
 
-    // 盤面配列で値を交換 (重要: まず配列を交換)
     [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
 
-    // 視覚的な交換アニメーション
     const dx = c2 - c1;
     const dy = r2 - r1;
     
-    // transformを使ってタイルを視覚的に移動
     tile1.style.transform = `translate(${dx * TILE_SIZE}px, ${dy * TILE_SIZE}px)`;
     tile2.style.transform = `translate(${-dx * TILE_SIZE}px, ${-dy * TILE_SIZE}px)`;
     
     
-    // マッチングサイクルを開始
     setTimeout(() => {
-        // アニメーション完了後、DOM要素のテキスト内容を交換 (データ属性はDOMの位置を示すので変更しない)
+        // アニメーション完了後、DOM要素のテキスト内容を交換
         [tile1.textContent, tile2.textContent] = [tile2.textContent, tile1.textContent];
         
         // transformをリセット
         tile1.style.transform = '';
         tile2.style.transform = '';
 
-        // ★重要: アニメーション完了時に、tile1とtile2が入れ替わった後の位置のDOM要素を参照し直す必要があったが、
-        // 今回は位置を示す`data-r`, `data-c`は交換せず、テキスト内容のみを交換することで問題を回避する。
-
         currentCombo = 0; 
         swapMatchCycle(r1, c1, r2, c2);
     }, 200); 
 }
 
+// --- ゲームロジック ---
+
 /**
  * 交換後のマッチング、消去、落下、補充のサイクル
- * ★修正点: マッチしなかった場合に、配列を元に戻した後、drawBoard()でDOMを完全にリセットする
  */
 function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, originalC2 = -1) {
-    const matches = checkAllMatches();
+    const minMatch = 3; 
+    const matches = checkAllMatches(minMatch);
 
     if (matches.length > 0) {
         currentCombo++; 
+        
         updateComboDisplay(currentCombo);
+
+        if (currentCombo > 1) {
+            SE.combo(currentCombo); // コンボSE
+        } else {
+            SE.match(matches.length); // マッチSE
+        }
         
-        removeMatches(matches); // 消去 (DOMにmatchクラスを付与)
-        updateScore(matches);   
+        removeMatches(matches); 
+        updateScore(matches, minMatch); 
         
-        // 消去アニメーションを待つ
         setTimeout(() => {
-            // ★修正点: ここでDOM要素を削除せず、drawBoard()でまとめて処理する
+            gravity();              
+            fillEmptyTiles();       
+            drawBoard();            
             
-            gravity();              // 落下 (配列操作)
-            fillEmptyTiles();       // 補充 (配列操作)
-            drawBoard();            // 再描画 (DOM要素を配列の状態に完全に同期)
-            
-            // 連続マッチチェック（再帰）
             setTimeout(() => {
-                swapMatchCycle(); 
-            }, 300); // 落下・補充アニメーションを待つ
+                swapMatchCycle(); // 連鎖を続ける
+            }, 300); 
             
         }, 300); 
         
     } else {
         // マッチが存在しない場合
         if (currentCombo === 0 && originalR1 !== -1) {
-            // 最初のスワップでマッチしなかった場合のみ、元に戻す
+            // 最初のスワップでマッチしなかった場合、元に戻す
             const r1 = originalR1;
             const c1 = originalC1;
             const r2 = originalR2;
             const c2 = originalC2;
             
-            // 盤面配列で値を元に戻す
             [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
-            
-            // ★修正点: drawBoard()でDOMを完全に配列に同期させることで、古いDOM要素を確実に除去
             drawBoard(); 
         }
         isProcessing = false; 
         updateComboDisplay(0); 
+        checkGameOver(); // 処理完了後、ゲームオーバー判定を行う
     }
 }
 
-// --- マッチングロジック (変更なし) ---
-
-function checkAllMatches() {
-    // ... (前回のコードから変更なし)
-    const matches = [];
-
-    // 行方向のチェック
+/**
+ * どこをスライドしてもマッチできない状態かチェック
+ */
+function canMove() {
+    const minMatch = 3;
+    // 全ての隣接するタイルペアを試す
     for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE - 2; c++) {
-            const current = board[r][c];
-            if (!current) continue;
-            
-            let matchLength = 1;
-            for (let i = c + 1; i < GRID_SIZE; i++) {
-                if (board[r][i] === current) {
-                    matchLength++;
-                } else {
-                    break;
+        for (let c = 0; c < GRID_SIZE; c++) {
+            // 右隣とのスワップをシミュレート
+            if (c < GRID_SIZE - 1) {
+                // 配列の一時的なスワップ
+                [board[r][c], board[r][c + 1]] = [board[r][c + 1], board[r][c]];
+                if (checkAllMatches(minMatch).length > 0) {
+                    // 元に戻す
+                    [board[r][c], board[r][c + 1]] = [board[r][c + 1], board[r][c]];
+                    return true; // マッチ可能なスワップが見つかった
                 }
+                // 元に戻す
+                [board[r][c], board[r][c + 1]] = [board[r][c + 1], board[r][c]];
             }
-            
-            if (matchLength >= 3) {
-                for (let i = c; i < c + matchLength; i++) {
-                    if (!matches.some(m => m.r === r && m.c === i)) {
-                        matches.push({ r, c: i, len: matchLength, dir: 'row' });
-                    }
+
+            // 下隣とのスワップをシミュレート
+            if (r < GRID_SIZE - 1) {
+                // 配列の一時的なスワップ
+                [board[r][c], board[r + 1][c]] = [board[r + 1][c], board[r][c]];
+                if (checkAllMatches(minMatch).length > 0) {
+                    // 元に戻す
+                    [board[r][c], board[r + 1][c]] = [board[r + 1][c], board[r][c]];
+                    return true; // マッチ可能なスワップが見つかった
                 }
+                // 元に戻す
+                [board[r][c], board[r + 1][c]] = [board[r + 1][c], board[r][c]];
             }
-            c += matchLength - 1; 
         }
     }
+    return false; // マッチ可能なスワップがない
+}
 
-    // 列方向のチェック 
-    for (let c = 0; c < GRID_SIZE; c++) {
-        for (let r = 0; r < GRID_SIZE - 2; r++) {
+/**
+ * ゲームオーバー処理
+ */
+function checkGameOver() {
+    if (isGameOver) return;
+
+    if (!canMove()) {
+        isGameOver = true;
+        SE.gameOver(); // ゲームオーバーSE
+        
+        // オーバーレイを表示
+        gameOverOverlay.style.display = 'flex';
+        finalScoreElement.textContent = score;
+
+        // ボード上の操作を無効化 (isProcessing / isGameOver フラグで既に制御)
+    }
+}
+
+/**
+ * ボード全体の全てのマッチをチェックし、一致したタイルの座標リストを返す
+ * @param {number} minLen - 最小マッチ長 (常に3)
+ */
+function checkAllMatches(minLen = 3) {
+    const matches = [];
+
+    for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
             const current = board[r][c];
             if (!current) continue;
             
-            let matchLength = 1;
-            for (let i = r + 1; i < GRID_SIZE; i++) {
-                if (board[i][c] === current) {
-                    matchLength++;
-                } else {
-                    break;
+            // 行チェック
+            if (c <= GRID_SIZE - minLen) {
+                let matchLength = 1;
+                for (let i = c + 1; i < GRID_SIZE; i++) {
+                    if (board[r][i] === current) {
+                        matchLength++;
+                    } else {
+                        break;
+                    }
                 }
-            }
-            
-            if (matchLength >= 3) {
-                for (let i = r; i < r + matchLength; i++) {
-                    if (!matches.some(m => m.r === i && m.c === c)) {
-                        matches.push({ r: i, c, len: matchLength, dir: 'col' });
+                
+                if (matchLength >= minLen) {
+                    for (let i = c; i < c + matchLength; i++) {
+                        if (!matches.some(m => m.r === r && m.c === i)) {
+                            matches.push({ r, c: i, len: matchLength, dir: 'row' });
+                        }
                     }
                 }
             }
-            r += matchLength - 1; 
+            
+            // 列チェック
+            if (r <= GRID_SIZE - minLen) {
+                let matchLength = 1;
+                for (let i = r + 1; i < GRID_SIZE; i++) {
+                    if (board[i][c] === current) {
+                        matchLength++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if (matchLength >= minLen) {
+                    for (let i = r; i < r + matchLength; i++) {
+                        if (!matches.some(m => m.r === i && m.c === c)) {
+                            matches.push({ r: i, c, len: matchLength, dir: 'col' });
+                        }
+                    }
+                }
+            }
         }
     }
     return matches;
 }
 
-/**
- * マッチしたタイルをボードから削除（nullにする）し、演出を適用
- * ★修正点: removeMatchesはmatchクラスを付与するだけで、DOMの削除はdrawBoardに任せる
- */
+
 function removeMatches(matches) {
     matches.forEach(({ r, c }) => {
         board[r][c] = null;
@@ -339,15 +405,11 @@ function removeMatches(matches) {
     });
 }
 
-
-// --- スコア、コンボ、落下、補充 (変更なし) ---
-// (中略 - 以前のコードのまま)
-
-function updateScore(matches) {
-    // ... (前回のコードから変更なし)
+function updateScore(matches, minMatch) {
     let totalScore = 0;
     const processedCrossMatches = new Set(); 
 
+    // クロスボーナス
     matches.forEach(m => {
         if (m.dir === 'row' && m.len >= 3) {
             for (let c = m.c; c < m.c + m.len; c++) {
@@ -375,8 +437,10 @@ function updateScore(matches) {
             return; 
         }
         processedMatchGroups.add(groupID);
+        
+        let base = BASE_SCORE;
 
-        let groupScore = m.len * BASE_SCORE;
+        let groupScore = m.len * base;
         
         if (m.len === 4) {
             groupScore *= 1.5; 
@@ -386,6 +450,7 @@ function updateScore(matches) {
         totalScore += Math.floor(groupScore);
     });
 
+    // コンボボーナス
     if (currentCombo > 1) {
         totalScore *= (1 + currentCombo * 0.2); 
     }
