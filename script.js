@@ -1,15 +1,13 @@
 // --- ゲーム設定 ---
 const GRID_SIZE = 8;
-// const TILE_SIZE = 62; // ★削除: 固定サイズを使用せず、動的にサイズを取得する
 const EMOJIS = ['🍎', '🍌', '🍇', '🍓'];
 const BASE_SCORE = 10;
-const EASY_MODE_COST = 10000;
-const MAX_EASY_MODE_COMBO = 100;
+
 const boardElement = document.getElementById('board');
 const scoreElement = document.getElementById('score');
 const comboDisplayElement = document.getElementById('combo-display');
-const easyComboButton = document.getElementById('easy-combo-button');
-const modeStatusElement = document.getElementById('mode-status');
+const gameOverOverlay = document.getElementById('game-over-overlay');
+const finalScoreElement = document.getElementById('final-score');
 
 // --- ゲーム状態 ---
 let board = [];
@@ -17,8 +15,6 @@ let score = 0;
 let selectedTile = null;
 let isProcessing = false;
 let currentCombo = 0;
-let isEasyMode = false;
-let easyModeCombosLeft = 0;
 
 // --- スライド操作用の変数 ---
 let startX = 0;
@@ -32,8 +28,6 @@ function getRandomEmoji() {
 }
 
 function initGame() {
-    // boardElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${TILE_SIZE - 2}px)`; // ★削除: CSSでレスポンシブ設定を行う
-
     board = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null).map(getRandomEmoji));
 
     // 初期安定化
@@ -43,62 +37,12 @@ function initGame() {
         fillEmptyTiles();
     }
 
+    // ★追加: ゲームオーバーを非表示に
+    gameOverOverlay.classList.remove('active');
+
     drawBoard();
     updateComboDisplay(0);
-    updateEasyModeUI();
-    easyComboButton.addEventListener('click', activateEasyMode);
 }
-
-/**
- * 簡易コンボモードを有効にする
- */
-function activateEasyMode() {
-    if (isEasyMode) return;
-    if (score < EASY_MODE_COST) {
-        alert("スコアが足りません (" + EASY_MODE_COST + "点必要)");
-        return;
-    }
-
-    score -= EASY_MODE_COST;
-    scoreElement.textContent = score;
-
-    isEasyMode = true;
-    easyModeCombosLeft = MAX_EASY_MODE_COMBO;
-
-    document.body.classList.add('easy-mode');
-    document.getElementById('game-container').classList.add('easy-mode');
-
-    updateEasyModeUI();
-}
-
-/**
- * 簡易コンボモードのUIを更新
- */
-function updateEasyModeUI() {
-    if (isEasyMode) {
-        modeStatusElement.textContent = `⚡ EASY MODE: 残り${easyModeCombosLeft}コンボ`;
-        modeStatusElement.classList.add('active');
-        easyComboButton.disabled = true;
-    } else {
-        modeStatusElement.textContent = '';
-        modeStatusElement.classList.remove('active');
-        easyComboButton.disabled = (score < EASY_MODE_COST);
-    }
-}
-
-/**
- * 簡易コンボモードを終了する
- */
-function deactivateEasyMode() {
-    isEasyMode = false;
-    easyModeCombosLeft = 0;
-
-    document.body.classList.remove('easy-mode');
-    document.getElementById('game-container').classList.remove('easy-mode');
-
-    updateEasyModeUI();
-}
-
 
 // --- DOM/スライド操作 ---
 function createTileElement(emoji, r, c) {
@@ -122,7 +66,11 @@ function drawBoard() {
             boardElement.appendChild(tile);
         }
     }
-    updateEasyModeUI();
+
+    // ★追加: 盤面描画後にゲームオーバー判定
+    if (!checkPossibleMoves()) {
+        showGameOver();
+    }
 }
 
 function handleDragStart(event) {
@@ -135,7 +83,6 @@ function handleDragStart(event) {
     startY = clientY;
 
     currentTileElement = event.currentTarget;
-    // .selected を使用。元のコードの.draggingを.selectedに置き換え
     currentTileElement.classList.add('selected');
 
     document.addEventListener('mousemove', handleDragMove);
@@ -212,7 +159,6 @@ function isAdjacent(r1, c1, r2, c2) {
 
 /**
  * タイルを交換し、マッチングチェックと処理を行う
- * ★修正: TILE_SIZEの代わりにoffsetWidthを使用し、動的なサイズ変更に対応
  */
 function swapTiles(r1, c1, r2, c2) {
 
@@ -221,7 +167,6 @@ function swapTiles(r1, c1, r2, c2) {
 
     if (!tile1 || !tile2) return;
 
-    // ★修正点: 現在のタイルの幅（移動量）を動的に取得
     const TILE_SIZE = tile1.offsetWidth;
 
     [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
@@ -248,29 +193,16 @@ function swapTiles(r1, c1, r2, c2) {
  * 交換後のマッチング、消去、落下、補充のサイクル
  */
 function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, originalC2 = -1) {
-    // Easy Mode中は2つ以上、通常は3つ以上でマッチをチェック
-    const minMatch = isEasyMode ? 2 : 3;
+    const minMatch = 3;
     const matches = checkAllMatches(minMatch);
 
     if (matches.length > 0) {
         currentCombo++;
 
-        // Easy Modeのコンボ制限
-        if (isEasyMode) {
-            easyModeCombosLeft--;
-            if (easyModeCombosLeft < 0) easyModeCombosLeft = 0;
-            updateEasyModeUI();
-        }
-
         updateComboDisplay(currentCombo);
 
         removeMatches(matches);
-        updateScore(matches, minMatch);
-
-        // Easy Modeが終了したかチェック
-        if (isEasyMode && easyModeCombosLeft === 0) {
-            deactivateEasyMode();
-        }
+        updateScore(matches);
 
         setTimeout(() => {
             gravity();
@@ -278,15 +210,6 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
             drawBoard();
 
             setTimeout(() => {
-                // Easy Modeでは連鎖を止める
-                if (isEasyMode && matches.length > 0) {
-                    isProcessing = false;
-                    updateComboDisplay(0);
-                    updateEasyModeUI();
-                    return;
-                }
-
-                // 通常モードまたはEasy Mode終了後の連鎖は続ける
                 swapMatchCycle();
             }, 300);
 
@@ -295,6 +218,7 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
     } else {
         // マッチが存在しない場合
         if (currentCombo === 0 && originalR1 !== -1) {
+            // マッチが成立しなかった場合、タイルを元に戻す
             const r1 = originalR1;
             const c1 = originalC1;
             const r2 = originalR2;
@@ -305,6 +229,11 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
         }
         isProcessing = false;
         updateComboDisplay(0);
+
+        // ★追加: ターン終了時にゲームオーバー判定
+        if (!checkPossibleMoves()) {
+            showGameOver();
+        }
     }
 }
 
@@ -312,7 +241,7 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
 
 /**
  * ボード全体の全てのマッチをチェックし、一致したタイルの座標リストを返す
- * @param {number} minLen - 最小マッチ長 (2または3)
+ * @param {number} minLen - 最小マッチ長 (常に3)
  */
 function checkAllMatches(minLen = 3) {
     const matches = [];
@@ -380,31 +309,29 @@ function removeMatches(matches) {
 /**
  * スコアを更新
  */
-function updateScore(matches, minMatch) {
+function updateScore(matches) {
     let totalScore = 0;
     const processedCrossMatches = new Set();
 
-    // クロスボーナスは3つ以上でのみ適用
-    if (minMatch >= 3) {
-        matches.forEach(m => {
-            if (m.dir === 'row' && m.len >= 3) {
-                for (let c = m.c; c < m.c + m.len; c++) {
-                    const colMatches = matches.filter(
-                        match => match.dir === 'col' &&
-                            match.r <= m.r && match.r + match.len > m.r &&
-                            match.c === c
-                    );
-                    if (colMatches.length > 0) {
-                        const centerKey = `${m.r},${c}`;
-                        if (!processedCrossMatches.has(centerKey)) {
-                            totalScore += BASE_SCORE * 3;
-                            processedCrossMatches.add(centerKey);
-                        }
+    // クロスボーナス
+    matches.forEach(m => {
+        if (m.dir === 'row' && m.len >= 3) {
+            for (let c = m.c; c < m.c + m.len; c++) {
+                const colMatches = matches.filter(
+                    match => match.dir === 'col' &&
+                        match.r <= m.r && match.r + match.len > m.r &&
+                        match.c === c
+                );
+                if (colMatches.length > 0) {
+                    const centerKey = `${m.r},${c}`;
+                    if (!processedCrossMatches.has(centerKey)) {
+                        totalScore += BASE_SCORE * 3;
+                        processedCrossMatches.add(centerKey);
                     }
                 }
             }
-        });
-    }
+        }
+    });
 
     const processedMatchGroups = new Set();
 
@@ -415,12 +342,7 @@ function updateScore(matches, minMatch) {
         }
         processedMatchGroups.add(groupID);
 
-        let base = BASE_SCORE;
-        if (minMatch === 2) {
-            base = BASE_SCORE / 2; // 2つ消しは基本スコアを半減
-        }
-
-        let groupScore = m.len * base;
+        let groupScore = m.len * BASE_SCORE;
 
         if (m.len === 4) {
             groupScore *= 1.5;
@@ -430,8 +352,8 @@ function updateScore(matches, minMatch) {
         totalScore += Math.floor(groupScore);
     });
 
-    // Easy Mode中はコンボボーナスなし
-    if (!isEasyMode && currentCombo > 1) {
+    // コンボボーナス
+    if (currentCombo > 1) {
         totalScore *= (1 + currentCombo * 0.2);
     }
 
@@ -440,13 +362,6 @@ function updateScore(matches, minMatch) {
 }
 
 function updateComboDisplay(combo) {
-    // Easy Mode中はコンボ表示をしない（連鎖を止めるため）
-    if (isEasyMode) {
-        comboDisplayElement.textContent = 'EASY MODE';
-        comboDisplayElement.classList.remove('active');
-        return;
-    }
-
     if (combo > 1) {
         comboDisplayElement.textContent = `${combo} COMBO!`;
         comboDisplayElement.classList.add('active');
@@ -478,6 +393,94 @@ function fillEmptyTiles() {
             }
         }
     }
+}
+
+
+/**
+ * ★追加: ゲームオーバー判定 (動かせる手があるかチェック)
+ */
+function checkPossibleMoves() {
+    // 全てのタイルとその隣のタイルを交換してみて、マッチが成立するかチェックする
+    for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+            const tempBoard = JSON.parse(JSON.stringify(board)); // ボードのディープコピー
+
+            // 右隣と交換
+            if (c < GRID_SIZE - 1) {
+                [tempBoard[r][c], tempBoard[r][c + 1]] = [tempBoard[r][c + 1], tempBoard[r][c]];
+                if (checkTempMatches(tempBoard).length > 0) return true;
+                [tempBoard[r][c], tempBoard[r][c + 1]] = [tempBoard[r][c + 1], tempBoard[r][c]]; // 元に戻す
+            }
+
+            // 下隣と交換
+            if (r < GRID_SIZE - 1) {
+                [tempBoard[r][c], tempBoard[r + 1][c]] = [tempBoard[r + 1][c], tempBoard[r][c]];
+                if (checkTempMatches(tempBoard).length > 0) return true;
+                [tempBoard[r][c], tempBoard[r + 1][c]] = [tempBoard[r + 1][c], tempBoard[r][c]]; // 元に戻す
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * ★追加: 仮ボードでマッチをチェック
+ */
+function checkTempMatches(tempBoard) {
+    const minLen = 3;
+    const matches = [];
+
+    // 行方向のチェック
+    for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+            const current = tempBoard[r][c];
+            if (!current) continue;
+
+            // 行チェック
+            if (c <= GRID_SIZE - minLen) {
+                let matchLength = 1;
+                for (let i = c + 1; i < GRID_SIZE; i++) {
+                    if (tempBoard[r][i] === current) matchLength++;
+                    else break;
+                }
+                if (matchLength >= minLen) {
+                    for (let i = c; i < c + matchLength; i++) {
+                        matches.push({ r, c: i }); // 座標のみでOK
+                    }
+                }
+            }
+
+            // 列チェック
+            if (r <= GRID_SIZE - minLen) {
+                let matchLength = 1;
+                for (let i = r + 1; i < GRID_SIZE; i++) {
+                    if (tempBoard[i][c] === current) matchLength++;
+                    else break;
+                }
+                if (matchLength >= minLen) {
+                    for (let i = r; i < r + matchLength; i++) {
+                        matches.push({ r: i, c }); // 座標のみでOK
+                    }
+                }
+            }
+        }
+    }
+    // 重複を削除して返す（今回は存在有無のみ知りたいので、そのままのリストでも良いが念のため）
+    const uniqueMatches = [];
+    matches.forEach(m => {
+        if (!uniqueMatches.some(um => um.r === m.r && um.c === m.c)) {
+            uniqueMatches.push(m);
+        }
+    });
+    return uniqueMatches;
+}
+
+/**
+ * ★追加: ゲームオーバー画面を表示
+ */
+function showGameOver() {
+    finalScoreElement.textContent = `最終スコア: ${score}`;
+    gameOverOverlay.classList.add('active');
 }
 
 
