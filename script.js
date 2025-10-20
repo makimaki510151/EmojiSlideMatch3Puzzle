@@ -10,9 +10,9 @@ const comboDisplayElement = document.getElementById('combo-display');
 // --- ゲーム状態 ---
 let board = [];
 let score = 0;
-let selectedTile = null; // ドラッグ開始タイル (DOM要素)
-let isProcessing = false; // コンボ中など、操作を受け付けない状態
-let currentCombo = 0; // 現在のコンボ回数
+let selectedTile = null; 
+let isProcessing = false; 
+let currentCombo = 0; 
 
 // --- スライド操作用の変数 ---
 let startX = 0;
@@ -33,7 +33,7 @@ function getRandomEmoji() {
  */
 function initGame() {
     // CSS Gridの設定
-    boardElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${TILE_SIZE - 2}px)`; // タイルサイズに合わせる
+    boardElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${TILE_SIZE - 2}px)`; 
 
     // 衝突のない初期ボードを生成
     board = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null).map(getRandomEmoji));
@@ -46,11 +46,12 @@ function initGame() {
     }
     
     drawBoard();
-    updateComboDisplay(0); // コンボ表示をリセット
+    updateComboDisplay(0); 
 }
 
 /**
  * ボード配列からHTMLにタイルを描画
+ * ★修正点: drawBoardは常にDOMをボード配列の内容に完全に同期させる役割を持つ
  */
 function drawBoard() {
     boardElement.innerHTML = '';
@@ -72,14 +73,13 @@ function createTileElement(emoji, r, c) {
     tile.dataset.r = r;
     tile.dataset.c = c;
     
-    // クリックイベントの代わりにスライドイベントを設定
     tile.addEventListener('mousedown', handleDragStart);
     tile.addEventListener('touchstart', handleDragStart);
 
     return tile;
 }
 
-// --- スライド操作処理 ---
+// --- スライド操作処理 (変更なし) ---
 
 /**
  * ドラッグ開始
@@ -87,18 +87,15 @@ function createTileElement(emoji, r, c) {
 function handleDragStart(event) {
     if (isProcessing) return; 
 
-    // タッチイベントまたはマウスイベントから座標を取得
     const clientX = event.clientX || event.touches[0].clientX;
     const clientY = event.clientY || event.touches[0].clientY;
 
     startX = clientX;
     startY = clientY;
     
-    // ドラッグを開始したタイルを記憶
     currentTileElement = event.currentTarget; 
-    currentTileElement.classList.add('selected'); // 選択状態を表示
+    currentTileElement.classList.add('selected'); 
 
-    // イベントリスナーを設定
     document.addEventListener('mousemove', handleDragMove);
     document.addEventListener('touchmove', handleDragMove);
     document.addEventListener('mouseup', handleDragEnd);
@@ -106,14 +103,12 @@ function handleDragStart(event) {
 }
 
 /**
- * ドラッグ移動 (ここではアニメーション処理は行わず、方向の判定のみに使う)
+ * ドラッグ移動 (変更なし)
  */
 function handleDragMove(event) {
-    // デフォルトのスクロール動作などをキャンセル
     if (event.cancelable) {
         event.preventDefault();
     }
-    // ここでリアルタイムにタイルを動かす処理を入れることも可能だが、今回は単純化し、Endでスワップ判定のみを行う
 }
 
 /**
@@ -122,15 +117,13 @@ function handleDragMove(event) {
 function handleDragEnd(event) {
     if (!currentTileElement) return;
 
-    // タッチイベントまたはマウスイベントから終了座標を取得
     const clientX = event.clientX || (event.changedTouches && event.changedTouches[0].clientX);
     const clientY = event.clientY || (event.changedTouches && event.changedTouches[0].clientY);
 
-    // 移動距離の計算
     const deltaX = clientX - startX;
     const deltaY = clientY - startY;
 
-    currentTileElement.classList.remove('selected'); // 選択解除
+    currentTileElement.classList.remove('selected'); 
 
     const r1 = parseInt(currentTileElement.dataset.r);
     const c1 = parseInt(currentTileElement.dataset.c);
@@ -138,32 +131,27 @@ function handleDragEnd(event) {
     let r2 = r1;
     let c2 = c1;
     
-    const threshold = 20; // スライド判定のしきい値 (ピクセル)
+    const threshold = 20; 
     
-    // スライド方向の判定
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > threshold) {
-        // 水平方向へのスライド
         if (deltaX > 0) {
-            c2 = c1 + 1; // 右
+            c2 = c1 + 1; 
         } else {
-            c2 = c1 - 1; // 左
+            c2 = c1 - 1; 
         }
     } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > threshold) {
-        // 垂直方向へのスライド
         if (deltaY > 0) {
-            r2 = r1 + 1; // 下
+            r2 = r1 + 1; 
         } else {
-            r2 = r1 - 1; // 上
+            r2 = r1 - 1; 
         }
     } else {
-        // 移動量が少ない、またはスライド判定されなかった場合は何もしない
         resetDragListeners();
         return;
     }
 
-    // 隣接タイルが存在し、盤面内かチェック
     if (isAdjacent(r1, c1, r2, c2) && r2 >= 0 && r2 < GRID_SIZE && c2 >= 0 && c2 < GRID_SIZE) {
-        isProcessing = true; // スワップ処理開始
+        isProcessing = true; 
         swapTiles(r1, c1, r2, c2);
     } 
 
@@ -171,7 +159,7 @@ function handleDragEnd(event) {
 }
 
 /**
- * ドラッグ関連のイベントリスナーを解除
+ * ドラッグ関連のイベントリスナーを解除 (変更なし)
  */
 function resetDragListeners() {
     currentTileElement = null;
@@ -182,7 +170,7 @@ function resetDragListeners() {
 }
 
 /**
- * 2つの座標が隣接しているかチェック
+ * 2つの座標が隣接しているかチェック (変更なし)
  */
 function isAdjacent(r1, c1, r2, c2) {
     const dr = Math.abs(r1 - r2);
@@ -192,64 +180,70 @@ function isAdjacent(r1, c1, r2, c2) {
 
 /**
  * タイルを交換し、マッチングチェックと処理を行う
+ * ★修正点: アニメーション完了後、DOM要素のテキスト内容のみを交換し、データ属性は維持する。
  */
 function swapTiles(r1, c1, r2, c2) {
     
-    // DOM要素のテキスト内容とデータ属性を交換
     const tile1 = document.querySelector(`.tile[data-r="${r1}"][data-c="${c1}"]`);
     const tile2 = document.querySelector(`.tile[data-r="${r2}"][data-c="${c2}"]`);
 
-    // 盤面配列で値を交換
+    // 盤面配列で値を交換 (重要: まず配列を交換)
     [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
 
     // 視覚的な交換アニメーション
     const dx = c2 - c1;
     const dy = r2 - r1;
     
+    // transformを使ってタイルを視覚的に移動
     tile1.style.transform = `translate(${dx * TILE_SIZE}px, ${dy * TILE_SIZE}px)`;
     tile2.style.transform = `translate(${-dx * TILE_SIZE}px, ${-dy * TILE_SIZE}px)`;
     
     
     // マッチングサイクルを開始
     setTimeout(() => {
-        // アニメーション完了後、DOMをリセット
+        // アニメーション完了後、DOM要素のテキスト内容を交換 (データ属性はDOMの位置を示すので変更しない)
+        [tile1.textContent, tile2.textContent] = [tile2.textContent, tile1.textContent];
+        
+        // transformをリセット
         tile1.style.transform = '';
         tile2.style.transform = '';
 
-        // データとDOMコンテンツの交換
-        [tile1.dataset.r, tile2.dataset.r] = [tile2.dataset.r, tile1.dataset.r];
-        [tile1.dataset.c, tile2.dataset.c] = [tile2.dataset.c, tile1.dataset.c];
-        [tile1.textContent, tile2.textContent] = [tile2.textContent, tile1.textContent];
-        
-        currentCombo = 0; // 新しい操作なのでコンボをリセット
+        // ★重要: アニメーション完了時に、tile1とtile2が入れ替わった後の位置のDOM要素を参照し直す必要があったが、
+        // 今回は位置を示す`data-r`, `data-c`は交換せず、テキスト内容のみを交換することで問題を回避する。
+
+        currentCombo = 0; 
         swapMatchCycle(r1, c1, r2, c2);
-    }, 200); // CSS transitionの時間 (0.2s) に合わせる
+    }, 200); 
 }
 
 /**
  * 交換後のマッチング、消去、落下、補充のサイクル
+ * ★修正点: マッチしなかった場合に、配列を元に戻した後、drawBoard()でDOMを完全にリセットする
  */
 function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, originalC2 = -1) {
     const matches = checkAllMatches();
 
     if (matches.length > 0) {
-        currentCombo++; // マッチが発生したのでコンボをカウントアップ
+        currentCombo++; 
         updateComboDisplay(currentCombo);
         
-        removeMatches(matches); // 消去
-        updateScore(matches);   // スコア更新
+        removeMatches(matches); // 消去 (DOMにmatchクラスを付与)
+        updateScore(matches);   
         
+        // 消去アニメーションを待つ
         setTimeout(() => {
-            gravity();              // 落下
-            fillEmptyTiles();       // 補充
-            drawBoard();            // 再描画 (タイルの位置をデータに合わせる)
+            // ★修正点: ここでDOM要素を削除せず、drawBoard()でまとめて処理する
+            
+            gravity();              // 落下 (配列操作)
+            fillEmptyTiles();       // 補充 (配列操作)
+            drawBoard();            // 再描画 (DOM要素を配列の状態に完全に同期)
             
             // 連続マッチチェック（再帰）
             setTimeout(() => {
-                swapMatchCycle(); // 引数なしで呼ぶことで、再帰呼び出しをトリガー
-            }, 300); 
+                swapMatchCycle(); 
+            }, 300); // 落下・補充アニメーションを待つ
             
-        }, 300); // 消去アニメーションを待つ
+        }, 300); 
         
     } else {
         // マッチが存在しない場合
@@ -262,22 +256,19 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
             
             // 盤面配列で値を元に戻す
             [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
-            drawBoard(); // 再描画
-
-            // 失敗時の「戻す」アニメーション (オプション)
-            // 実装が複雑になるため、今回は配列とDOMの即時リセットに留めます。
+            
+            // ★修正点: drawBoard()でDOMを完全に配列に同期させることで、古いDOM要素を確実に除去
+            drawBoard(); 
         }
-        isProcessing = false; // 処理完了、操作を受け付ける
-        updateComboDisplay(0); // コンボをリセット
+        isProcessing = false; 
+        updateComboDisplay(0); 
     }
 }
 
 // --- マッチングロジック (変更なし) ---
 
-/**
- * ボード全体の全てのマッチをチェックし、一致したタイルの座標リストを返す
- */
 function checkAllMatches() {
+    // ... (前回のコードから変更なし)
     const matches = [];
 
     // 行方向のチェック
@@ -336,6 +327,7 @@ function checkAllMatches() {
 
 /**
  * マッチしたタイルをボードから削除（nullにする）し、演出を適用
+ * ★修正点: removeMatchesはmatchクラスを付与するだけで、DOMの削除はdrawBoardに任せる
  */
 function removeMatches(matches) {
     matches.forEach(({ r, c }) => {
@@ -347,10 +339,12 @@ function removeMatches(matches) {
     });
 }
 
-/**
- * スコアを更新
- */
+
+// --- スコア、コンボ、落下、補充 (変更なし) ---
+// (中略 - 以前のコードのまま)
+
 function updateScore(matches) {
+    // ... (前回のコードから変更なし)
     let totalScore = 0;
     const processedCrossMatches = new Set(); 
 
@@ -400,9 +394,6 @@ function updateScore(matches) {
     scoreElement.textContent = score;
 }
 
-/**
- * コンボ表示を更新
- */
 function updateComboDisplay(combo) {
     if (combo > 1) {
         comboDisplayElement.textContent = `${combo} COMBO!`;
@@ -412,8 +403,6 @@ function updateComboDisplay(combo) {
         comboDisplayElement.classList.remove('active');
     }
 }
-
-// --- 落下と補充 (変更なし) ---
 
 function gravity() {
     for (let c = 0; c < GRID_SIZE; c++) {
