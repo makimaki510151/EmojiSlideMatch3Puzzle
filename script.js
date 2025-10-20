@@ -2,12 +2,15 @@
 const GRID_SIZE = 8;
 const EMOJIS = ['🍎', '🍌', '🍇', '🍓'];
 const BASE_SCORE = 10;
+const MAX_COMBO = 15; // クリア目標
 
 const boardElement = document.getElementById('board');
 const scoreElement = document.getElementById('score');
 const comboDisplayElement = document.getElementById('combo-display');
 const gameOverOverlay = document.getElementById('game-over-overlay');
 const finalScoreElement = document.getElementById('final-score');
+const gameClearOverlay = document.getElementById('game-clear-overlay');
+const clearFinalScoreElement = document.getElementById('clear-final-score');
 
 // --- ゲーム状態 ---
 let board = [];
@@ -15,11 +18,25 @@ let score = 0;
 let selectedTile = null;
 let isProcessing = false;
 let currentCombo = 0;
+let isGameClear = false;
+
+// ★追加/修正: AudioContext関連と選択された音
+let audioCtx = null;
+let isAudioContextInitialized = false;
+let selectedComboSound = 'happy'; // ★デフォルトのコンボ音を設定
 
 // --- スライド操作用の変数 ---
 let startX = 0;
 let startY = 0;
 let currentTileElement = null;
+
+
+// ★追加: ユーザーがコンボ音を選択する関数
+function setComboSound(soundKey) {
+    selectedComboSound = soundKey;
+    // 選択をローカルストレージに保存
+    localStorage.setItem('selectedComboSound', soundKey); 
+}
 
 // --- 初期化 ---
 
@@ -27,7 +44,26 @@ function getRandomEmoji() {
     return EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
 }
 
+function initializeAudioContext() {
+    if (isAudioContextInitialized) return;
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        isAudioContextInitialized = true;
+        console.log("AudioContext initialized.");
+    } catch (e) {
+        console.warn("Web Audio API not supported or failed to initialize.", e);
+    }
+}
+
+
 function initGame() {
+    // ★追加: ローカルストレージから選択された音を読み込む
+    const savedSound = localStorage.getItem('selectedComboSound');
+    if (savedSound) {
+        selectedComboSound = savedSound;
+        document.getElementById('combo-sound-select').value = savedSound;
+    }
+    
     board = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null).map(getRandomEmoji));
 
     // 初期安定化
@@ -37,24 +73,26 @@ function initGame() {
         fillEmptyTiles();
     }
 
-    // ★追加: ゲームオーバーを非表示に
     gameOverOverlay.classList.remove('active');
+    gameClearOverlay.classList.remove('active');
+    isGameClear = false;
 
     drawBoard();
+    registerTileListeners(); 
+
     updateComboDisplay(0);
+
+    document.addEventListener('mousedown', initializeAudioContext, { once: true });
+    document.addEventListener('touchstart', initializeAudioContext, { once: true });
 }
 
-// --- DOM/スライド操作 ---
+// --- DOM/スライド操作 (変更なし) ---
 function createTileElement(emoji, r, c) {
     const tile = document.createElement('div');
     tile.classList.add('tile');
     tile.textContent = emoji;
     tile.dataset.r = r;
     tile.dataset.c = c;
-
-    tile.addEventListener('mousedown', handleDragStart);
-    tile.addEventListener('touchstart', handleDragStart);
-
     return tile;
 }
 
@@ -67,14 +105,24 @@ function drawBoard() {
         }
     }
 
-    // ★追加: 盤面描画後にゲームオーバー判定
-    if (!checkPossibleMoves()) {
+    registerTileListeners(); 
+
+    if (!isGameClear && !checkPossibleMoves()) {
         showGameOver();
     }
 }
 
+function registerTileListeners() {
+    if (isGameClear) return;
+    document.querySelectorAll('.tile').forEach(tile => {
+        tile.addEventListener('mousedown', handleDragStart);
+        tile.addEventListener('touchstart', handleDragStart);
+    });
+}
+
+
 function handleDragStart(event) {
-    if (isProcessing) return;
+    if (isProcessing || isGameClear) return;
 
     const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
     const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
@@ -92,7 +140,6 @@ function handleDragStart(event) {
 }
 
 function handleDragMove(event) {
-    // タッチデバイスでの意図しないスクロールを防ぐ
     const isTouch = event.touches && event.touches.length > 0;
     if (isTouch && event.cancelable) {
         event.preventDefault();
@@ -117,6 +164,7 @@ function handleDragEnd(event) {
     let c2 = c1;
 
     const threshold = 20;
+    let didSlide = false; 
 
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > threshold) {
         if (deltaX > 0) {
@@ -124,12 +172,14 @@ function handleDragEnd(event) {
         } else {
             c2 = c1 - 1;
         }
+        didSlide = true;
     } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > threshold) {
         if (deltaY > 0) {
             r2 = r1 + 1;
         } else {
             r2 = r1 - 1;
         }
+        didSlide = true;
     } else {
         resetDragListeners();
         return;
@@ -137,6 +187,11 @@ function handleDragEnd(event) {
 
     if (isAdjacent(r1, c1, r2, c2) && r2 >= 0 && r2 < GRID_SIZE && c2 >= 0 && c2 < GRID_SIZE) {
         isProcessing = true;
+        
+        if (didSlide) {
+            playSlideSound();
+        }
+
         swapTiles(r1, c1, r2, c2);
     }
 
@@ -158,9 +213,10 @@ function isAdjacent(r1, c1, r2, c2) {
 }
 
 /**
- * タイルを交換し、マッチングチェックと処理を行う
+ * タイルを交換し、マッチングチェックと処理を行う (変更なし)
  */
 function swapTiles(r1, c1, r2, c2) {
+    if (isGameClear) return;
 
     const tile1 = document.querySelector(`.tile[data-r="${r1}"][data-c="${c1}"]`);
     const tile2 = document.querySelector(`.tile[data-r="${r2}"][data-c="${c2}"]`);
@@ -193,13 +249,28 @@ function swapTiles(r1, c1, r2, c2) {
  * 交換後のマッチング、消去、落下、補充のサイクル
  */
 function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, originalC2 = -1) {
+    if (isGameClear) {
+        isProcessing = false;
+        updateComboDisplay(0);
+        return;
+    }
+
     const minMatch = 3;
     const matches = checkAllMatches(minMatch);
 
     if (matches.length > 0) {
         currentCombo++;
-
         updateComboDisplay(currentCombo);
+
+        // ★修正: 選択されたコンボ音を再生
+        playMatchSound(currentCombo, selectedComboSound);
+
+        if (currentCombo >= MAX_COMBO) {
+            isGameClear = true;
+            playFanfare();
+            showGameClear();
+            return; 
+        }
 
         removeMatches(matches);
         updateScore(matches);
@@ -207,7 +278,7 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
         setTimeout(() => {
             gravity();
             fillEmptyTiles();
-            drawBoard();
+            drawBoard(); 
 
             setTimeout(() => {
                 swapMatchCycle();
@@ -216,9 +287,7 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
         }, 300);
 
     } else {
-        // マッチが存在しない場合
         if (currentCombo === 0 && originalR1 !== -1) {
-            // マッチが成立しなかった場合、タイルを元に戻す
             const r1 = originalR1;
             const c1 = originalC1;
             const r2 = originalR2;
@@ -230,19 +299,13 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
         isProcessing = false;
         updateComboDisplay(0);
 
-        // ★追加: ターン終了時にゲームオーバー判定
-        if (!checkPossibleMoves()) {
+        if (!isGameClear && !checkPossibleMoves()) {
             showGameOver();
         }
     }
 }
 
-// --- マッチングロジック (変更なし) ---
-
-/**
- * ボード全体の全てのマッチをチェックし、一致したタイルの座標リストを返す
- * @param {number} minLen - 最小マッチ長 (常に3)
- */
+// --- その他のロジック関数 (変更なし) ---
 function checkAllMatches(minLen = 3) {
     const matches = [];
 
@@ -306,14 +369,10 @@ function removeMatches(matches) {
     });
 }
 
-/**
- * スコアを更新
- */
 function updateScore(matches) {
     let totalScore = 0;
     const processedCrossMatches = new Set();
 
-    // クロスボーナス
     matches.forEach(m => {
         if (m.dir === 'row' && m.len >= 3) {
             for (let c = m.c; c < m.c + m.len; c++) {
@@ -352,7 +411,6 @@ function updateScore(matches) {
         totalScore += Math.floor(groupScore);
     });
 
-    // コンボボーナス
     if (currentCombo > 1) {
         totalScore *= (1 + currentCombo * 0.2);
     }
@@ -396,36 +454,29 @@ function fillEmptyTiles() {
 }
 
 
-/**
- * ★追加: ゲームオーバー判定 (動かせる手があるかチェック)
- */
 function checkPossibleMoves() {
-    // 全てのタイルとその隣のタイルを交換してみて、マッチが成立するかチェックする
     for (let r = 0; r < GRID_SIZE; r++) {
         for (let c = 0; c < GRID_SIZE; c++) {
-            const tempBoard = JSON.parse(JSON.stringify(board)); // ボードのディープコピー
+            const tempBoard = JSON.parse(JSON.stringify(board)); 
 
             // 右隣と交換
             if (c < GRID_SIZE - 1) {
                 [tempBoard[r][c], tempBoard[r][c + 1]] = [tempBoard[r][c + 1], tempBoard[r][c]];
                 if (checkTempMatches(tempBoard).length > 0) return true;
-                [tempBoard[r][c], tempBoard[r][c + 1]] = [tempBoard[r][c + 1], tempBoard[r][c]]; // 元に戻す
+                [tempBoard[r][c], tempBoard[r][c + 1]] = [tempBoard[r][c + 1], tempBoard[r][c]]; 
             }
 
             // 下隣と交換
             if (r < GRID_SIZE - 1) {
                 [tempBoard[r][c], tempBoard[r + 1][c]] = [tempBoard[r + 1][c], tempBoard[r][c]];
                 if (checkTempMatches(tempBoard).length > 0) return true;
-                [tempBoard[r][c], tempBoard[r + 1][c]] = [tempBoard[r + 1][c], tempBoard[r][c]]; // 元に戻す
+                [tempBoard[r][c], tempBoard[r + 1][c]] = [tempBoard[r + 1][c], tempBoard[r][c]]; 
             }
         }
     }
     return false;
 }
 
-/**
- * ★追加: 仮ボードでマッチをチェック
- */
 function checkTempMatches(tempBoard) {
     const minLen = 3;
     const matches = [];
@@ -445,7 +496,7 @@ function checkTempMatches(tempBoard) {
                 }
                 if (matchLength >= minLen) {
                     for (let i = c; i < c + matchLength; i++) {
-                        matches.push({ r, c: i }); // 座標のみでOK
+                        matches.push({ r, c: i }); 
                     }
                 }
             }
@@ -459,13 +510,12 @@ function checkTempMatches(tempBoard) {
                 }
                 if (matchLength >= minLen) {
                     for (let i = r; i < r + matchLength; i++) {
-                        matches.push({ r: i, c }); // 座標のみでOK
+                        matches.push({ r: i, c }); 
                     }
                 }
             }
         }
     }
-    // 重複を削除して返す（今回は存在有無のみ知りたいので、そのままのリストでも良いが念のため）
     const uniqueMatches = [];
     matches.forEach(m => {
         if (!uniqueMatches.some(um => um.r === m.r && um.c === m.c)) {
@@ -475,12 +525,144 @@ function checkTempMatches(tempBoard) {
     return uniqueMatches;
 }
 
-/**
- * ★追加: ゲームオーバー画面を表示
- */
 function showGameOver() {
+    isProcessing = false;
     finalScoreElement.textContent = `最終スコア: ${score}`;
     gameOverOverlay.classList.add('active');
+}
+
+function showGameClear() {
+    isProcessing = false; 
+    clearFinalScoreElement.textContent = `最終スコア: ${score}`;
+    gameClearOverlay.classList.add('active');
+}
+
+
+// --- SE 関数 (★ここを主に修正) ---
+
+/**
+ * スライド音を生成・再生 (変更なし)
+ */
+function playSlideSound() {
+    if (!isAudioContextInitialized || !audioCtx) return;
+
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = 'sine'; 
+    oscillator.frequency.setValueAtTime(300, audioCtx.currentTime); 
+    oscillator.frequency.linearRampToValueAtTime(250, audioCtx.currentTime + 0.1); 
+
+    gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); 
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15); 
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + 0.15);
+}
+
+// ★追加: 複数のコンボ音パターンを処理するロジック
+function playMatchSound(combo, soundKey) {
+    if (!isAudioContextInitialized || !audioCtx) return;
+
+    const effectiveCombo = Math.min(combo, MAX_COMBO); 
+    const comboStep = effectiveCombo - 1;
+
+    let baseFreq, pitchIncreasePerCombo, waveType, duration;
+
+    // --- 各サウンドパターンの設定 ---
+    switch (soundKey) {
+        case 'retro':
+            baseFreq = 300;
+            pitchIncreasePerCombo = 20; 
+            waveType = 'square'; // レトロなピコピコ音
+            duration = 0.15;
+            break;
+        case 'perc':
+            baseFreq = 600;
+            pitchIncreasePerCombo = 25;
+            waveType = 'sawtooth'; // 短いノコギリ波で打楽器的な鋭さを出す
+            duration = 0.1;
+            break;
+        case 'deep':
+            baseFreq = 200;
+            pitchIncreasePerCombo = 15;
+            waveType = 'sine'; // 低いサイン波で重厚に
+            duration = 0.3;
+            break;
+        case 'happy': // デフォルト
+        default:
+            baseFreq = 500;
+            pitchIncreasePerCombo = 17.5;
+            waveType = 'sine'; // 明るいサイン波
+            duration = 0.2;
+            break;
+    }
+    
+    // 周波数計算
+    const freq = baseFreq + pitchIncreasePerCombo * comboStep; 
+
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = waveType; 
+    oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+    // エンベロープ（音の形状）
+    const peakGain = (soundKey === 'perc') ? 0.4 : 0.25; // パーカッシブは少し大きく
+    const fadeTime = duration * 0.5;
+
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(peakGain, audioCtx.currentTime + fadeTime); 
+    gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration); 
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + duration);
+}
+
+
+/**
+ * ファンファーレ音を生成・再生 (変更なし)
+ */
+function playFanfare() {
+    if (!isAudioContextInitialized || !audioCtx) {
+        console.warn("AudioContext not initialized. Cannot play fanfare.");
+        return;
+    }
+
+    const notes = [392, 523.25, 659.25, 783.99, 1046.5]; 
+    const duration = 0.25; 
+
+    notes.forEach((freq, index) => {
+        const oscillator1 = audioCtx.createOscillator();
+        oscillator1.type = 'sine'; 
+        oscillator1.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+        const oscillator2 = audioCtx.createOscillator();
+        oscillator2.type = 'sawtooth'; 
+        oscillator2.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+        const gainNode = audioCtx.createGain();
+
+        const startTime = audioCtx.currentTime + index * duration;
+        const endTime = startTime + duration; 
+
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(0.4, startTime + 0.05); 
+        gainNode.gain.linearRampToValueAtTime(0, endTime);
+
+        oscillator1.connect(gainNode);
+        oscillator2.connect(gainNode); 
+        gainNode.connect(audioCtx.destination);
+
+        oscillator1.start(startTime);
+        oscillator2.start(startTime);
+        oscillator1.stop(endTime);
+        oscillator2.stop(endTime);
+    });
 }
 
 
