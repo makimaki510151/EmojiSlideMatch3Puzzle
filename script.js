@@ -1,21 +1,21 @@
 // --- ゲーム設定 ---
 const GRID_SIZE = 8;
-const TILE_SIZE = 62; 
-const EMOJIS = ['🍎', '🍌', '🍇', '🍓']; 
+const TILE_SIZE = 62;
+const EMOJIS = ['🍎', '🍌', '🍇', '🍓'];
 const BASE_SCORE = 10;
 
 // --- DOM要素 ---
 const boardElement = document.getElementById('board');
 const scoreElement = document.getElementById('score');
-const comboDisplayElement = document.getElementById('combo-display'); 
+const comboDisplayElement = document.getElementById('combo-display');
 const gameOverOverlay = document.getElementById('game-over-overlay');
 const finalScoreElement = document.getElementById('final-score');
 
 // --- ゲーム状態 ---
 let board = [];
 let score = 0;
-let isProcessing = false; 
-let currentCombo = 0; 
+let isProcessing = false;
+let currentCombo = 0;
 let isGameOver = false; // ゲームオーバーステータスを追加
 
 // --- スライド操作用の変数 ---
@@ -40,17 +40,17 @@ function playSynthSound(frequency, duration, type = 'square', volume = 0.5, deca
 
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-    
+
     oscillator.type = type;
     oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
-    
+
     gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
     // 減衰
     gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + decay);
 
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-    
+
     oscillator.start();
     oscillator.stop(audioCtx.currentTime + duration);
 }
@@ -80,17 +80,17 @@ function getRandomEmoji() {
 }
 
 function initGame() {
-    boardElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${TILE_SIZE - 2}px)`; 
+    boardElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${TILE_SIZE - 2}px)`;
 
     board = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null).map(getRandomEmoji));
-    
+
     // 初期安定化
-    while (checkAllMatches(3).length > 0) { 
+    while (checkAllMatches(3).length > 0) {
         removeMatches(checkAllMatches(3));
         gravity();
         fillEmptyTiles();
     }
-    
+
     drawBoard();
     checkGameOver(); // 初期状態でゲームオーバー判定
 }
@@ -111,7 +111,7 @@ function createTileElement(emoji, r, c) {
     tile.textContent = emoji;
     tile.dataset.r = r;
     tile.dataset.c = c;
-    
+
     tile.addEventListener('mousedown', handleDragStart);
     tile.addEventListener('touchstart', handleDragStart);
 
@@ -128,9 +128,9 @@ function handleDragStart(event) {
 
     startX = clientX;
     startY = clientY;
-    
-    currentTileElement = event.currentTarget; 
-    currentTileElement.classList.add('selected'); 
+
+    currentTileElement = event.currentTarget;
+    currentTileElement.classList.add('selected');
 
     document.addEventListener('mousemove', handleDragMove);
     document.addEventListener('touchmove', handleDragMove);
@@ -139,9 +139,23 @@ function handleDragStart(event) {
 }
 
 function handleDragMove(event) {
-    if (event.cancelable) {
+    // 画面全体のスライドを防ぎたいのは、主にタイルをスライドしようとした時 (水平方向)
+
+    const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+    const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+
+    const deltaX = clientX - startX;
+    const deltaY = clientY - startY;
+
+    const isHorizontalMove = Math.abs(deltaX) > Math.abs(deltaY);
+    const threshold = 5; // 微細な動きを無視するための閾値
+
+    if (event.cancelable && (isHorizontalMove && Math.abs(deltaX) > threshold)) {
+        // 水平方向への動きが支配的かつ閾値を超えている場合、
+        // 意図的なタイル操作とみなし、OSのデフォルト動作（画面スクロール）を停止
         event.preventDefault();
     }
+    // 垂直方向の動きが支配的な場合はpreventDefault()を呼ばず、画面のスクロールを許可する
 }
 
 function handleDragEnd(event) {
@@ -153,27 +167,27 @@ function handleDragEnd(event) {
     const deltaX = clientX - startX;
     const deltaY = clientY - startY;
 
-    currentTileElement.classList.remove('selected'); 
+    currentTileElement.classList.remove('selected');
 
     const r1 = parseInt(currentTileElement.dataset.r);
     const c1 = parseInt(currentTileElement.dataset.c);
-    
+
     let r2 = r1;
     let c2 = c1;
-    
-    const threshold = 20; 
-    
+
+    const threshold = 20;
+
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > threshold) {
         if (deltaX > 0) {
-            c2 = c1 + 1; 
+            c2 = c1 + 1;
         } else {
-            c2 = c1 - 1; 
+            c2 = c1 - 1;
         }
     } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > threshold) {
         if (deltaY > 0) {
-            r2 = r1 + 1; 
+            r2 = r1 + 1;
         } else {
-            r2 = r1 - 1; 
+            r2 = r1 - 1;
         }
     } else {
         resetDragListeners();
@@ -181,10 +195,10 @@ function handleDragEnd(event) {
     }
 
     if (isAdjacent(r1, c1, r2, c2) && r2 >= 0 && r2 < GRID_SIZE && c2 >= 0 && c2 < GRID_SIZE) {
-        isProcessing = true; 
+        isProcessing = true;
         SE.slide(); // スライドSE
         swapTiles(r1, c1, r2, c2);
-    } 
+    }
 
     resetDragListeners();
 }
@@ -204,7 +218,7 @@ function isAdjacent(r1, c1, r2, c2) {
 }
 
 function swapTiles(r1, c1, r2, c2) {
-    
+
     const tile1 = document.querySelector(`.tile[data-r="${r1}"][data-c="${c1}"]`);
     const tile2 = document.querySelector(`.tile[data-r="${r2}"][data-c="${c2}"]`);
 
@@ -212,22 +226,22 @@ function swapTiles(r1, c1, r2, c2) {
 
     const dx = c2 - c1;
     const dy = r2 - r1;
-    
+
     tile1.style.transform = `translate(${dx * TILE_SIZE}px, ${dy * TILE_SIZE}px)`;
     tile2.style.transform = `translate(${-dx * TILE_SIZE}px, ${-dy * TILE_SIZE}px)`;
-    
-    
+
+
     setTimeout(() => {
         // アニメーション完了後、DOM要素のテキスト内容を交換
         [tile1.textContent, tile2.textContent] = [tile2.textContent, tile1.textContent];
-        
+
         // transformをリセット
         tile1.style.transform = '';
         tile2.style.transform = '';
 
-        currentCombo = 0; 
+        currentCombo = 0;
         swapMatchCycle(r1, c1, r2, c2);
-    }, 200); 
+    }, 200);
 }
 
 // --- ゲームロジック ---
@@ -236,12 +250,12 @@ function swapTiles(r1, c1, r2, c2) {
  * 交換後のマッチング、消去、落下、補充のサイクル
  */
 function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, originalC2 = -1) {
-    const minMatch = 3; 
+    const minMatch = 3;
     const matches = checkAllMatches(minMatch);
 
     if (matches.length > 0) {
-        currentCombo++; 
-        
+        currentCombo++;
+
         updateComboDisplay(currentCombo);
 
         if (currentCombo > 1) {
@@ -249,21 +263,21 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
         } else {
             SE.match(matches.length); // マッチSE
         }
-        
-        removeMatches(matches); 
-        updateScore(matches, minMatch); 
-        
+
+        removeMatches(matches);
+        updateScore(matches, minMatch);
+
         setTimeout(() => {
-            gravity();              
-            fillEmptyTiles();       
-            drawBoard();            
-            
+            gravity();
+            fillEmptyTiles();
+            drawBoard();
+
             setTimeout(() => {
                 swapMatchCycle(); // 連鎖を続ける
-            }, 300); 
-            
-        }, 300); 
-        
+            }, 300);
+
+        }, 300);
+
     } else {
         // マッチが存在しない場合
         if (currentCombo === 0 && originalR1 !== -1) {
@@ -272,12 +286,12 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
             const c1 = originalC1;
             const r2 = originalR2;
             const c2 = originalC2;
-            
+
             [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
-            drawBoard(); 
+            drawBoard();
         }
-        isProcessing = false; 
-        updateComboDisplay(0); 
+        isProcessing = false;
+        updateComboDisplay(0);
         checkGameOver(); // 処理完了後、ゲームオーバー判定を行う
     }
 }
@@ -329,7 +343,7 @@ function checkGameOver() {
     if (!canMove()) {
         isGameOver = true;
         SE.gameOver(); // ゲームオーバーSE
-        
+
         // オーバーレイを表示
         gameOverOverlay.style.display = 'flex';
         finalScoreElement.textContent = score;
@@ -349,7 +363,7 @@ function checkAllMatches(minLen = 3) {
         for (let c = 0; c < GRID_SIZE; c++) {
             const current = board[r][c];
             if (!current) continue;
-            
+
             // 行チェック
             if (c <= GRID_SIZE - minLen) {
                 let matchLength = 1;
@@ -360,7 +374,7 @@ function checkAllMatches(minLen = 3) {
                         break;
                     }
                 }
-                
+
                 if (matchLength >= minLen) {
                     for (let i = c; i < c + matchLength; i++) {
                         if (!matches.some(m => m.r === r && m.c === i)) {
@@ -369,7 +383,7 @@ function checkAllMatches(minLen = 3) {
                     }
                 }
             }
-            
+
             // 列チェック
             if (r <= GRID_SIZE - minLen) {
                 let matchLength = 1;
@@ -380,7 +394,7 @@ function checkAllMatches(minLen = 3) {
                         break;
                     }
                 }
-                
+
                 if (matchLength >= minLen) {
                     for (let i = r; i < r + matchLength; i++) {
                         if (!matches.some(m => m.r === i && m.c === c)) {
@@ -407,21 +421,21 @@ function removeMatches(matches) {
 
 function updateScore(matches, minMatch) {
     let totalScore = 0;
-    const processedCrossMatches = new Set(); 
+    const processedCrossMatches = new Set();
 
     // クロスボーナス
     matches.forEach(m => {
         if (m.dir === 'row' && m.len >= 3) {
             for (let c = m.c; c < m.c + m.len; c++) {
                 const colMatches = matches.filter(
-                    match => match.dir === 'col' && 
-                             match.r <= m.r && match.r + match.len > m.r && 
-                             match.c === c
+                    match => match.dir === 'col' &&
+                        match.r <= m.r && match.r + match.len > m.r &&
+                        match.c === c
                 );
                 if (colMatches.length > 0) {
                     const centerKey = `${m.r},${c}`;
                     if (!processedCrossMatches.has(centerKey)) {
-                        totalScore += BASE_SCORE * 3; 
+                        totalScore += BASE_SCORE * 3;
                         processedCrossMatches.add(centerKey);
                     }
                 }
@@ -429,30 +443,30 @@ function updateScore(matches, minMatch) {
         }
     });
 
-    const processedMatchGroups = new Set(); 
+    const processedMatchGroups = new Set();
 
     matches.forEach(m => {
         const groupID = `${m.r},${m.c},${m.dir},${m.len}`;
         if (processedMatchGroups.has(groupID)) {
-            return; 
+            return;
         }
         processedMatchGroups.add(groupID);
-        
+
         let base = BASE_SCORE;
 
         let groupScore = m.len * base;
-        
+
         if (m.len === 4) {
-            groupScore *= 1.5; 
+            groupScore *= 1.5;
         } else if (m.len >= 5) {
-            groupScore *= 2;   
+            groupScore *= 2;
         }
         totalScore += Math.floor(groupScore);
     });
 
     // コンボボーナス
     if (currentCombo > 1) {
-        totalScore *= (1 + currentCombo * 0.2); 
+        totalScore *= (1 + currentCombo * 0.2);
     }
 
     score += Math.floor(totalScore);
@@ -462,7 +476,7 @@ function updateScore(matches, minMatch) {
 function updateComboDisplay(combo) {
     if (combo > 1) {
         comboDisplayElement.textContent = `${combo} COMBO!`;
-        comboDisplayElement.classList.add('active'); 
+        comboDisplayElement.classList.add('active');
     } else {
         comboDisplayElement.textContent = '';
         comboDisplayElement.classList.remove('active');

@@ -5,6 +5,13 @@ body {
     align-items: center;
     background-color: #f0f0f0;
     transition: background-color 0.5s;
+    
+    /* ★修正点: 横スクロールと誤操作を防ぐ */
+    margin: 0; /* bodyのデフォルトマージンを削除 */
+    padding: 10px; /* 小さな画面でコンテンツが端に寄りすぎるのを防ぐ */
+    min-height: 100vh; /* 画面の高さいっぱいを占める */
+    overflow-x: hidden; /* 横方向のスクロールを完全に禁止 */
+    touch-action: pan-y; /* 縦方向のスクロールは許可するが、横方向はOSの制御を減らす */
 }
 
 /* 簡易コンボモードのスタイルを削除 */
@@ -15,6 +22,11 @@ body {
     border-radius: 10px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     transition: box-shadow 0.5s;
+    
+    /* ★修正点: 最大幅を設定し、画面幅に合わせて縮小 */
+    width: 100%; 
+    max-width: 550px; /* PC/タブレットでの最大幅を設定 */
+    box-sizing: border-box; /* paddingを含めて幅を計算 */
 }
 
 #score-board {
@@ -47,9 +59,14 @@ body {
 
 #board {
     display: grid;
+    /* TILE_SIZE (62px * 8 = 496px) */
     border: 3px solid #333;
     background-color: #ccc;
     position: relative; 
+    
+    /* ★修正点: 小さい画面に対応 */
+    width: min-content; /* グリッドの内容に幅を合わせる */
+    margin: 0 auto; /* 中央寄せ */
 }
 
 .tile {
