@@ -1,0 +1,82 @@
+body {
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #f0f0f0;
+}
+
+#game-container {
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+#score-board {
+    margin-bottom: 10px;
+    font-size: 1.5em;
+    font-weight: bold;
+    text-align: center;
+    color: #333;
+}
+
+#combo-display {
+    text-align: center;
+    font-size: 2em;
+    font-weight: bold;
+    color: #e67e22; /* オレンジ色など、目立つ色 */
+    min-height: 1.5em; /* コンボがない時もスペースを確保 */
+    margin-bottom: 10px;
+    transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+}
+#combo-display.active {
+    animation: combo-pop 0.5s ease-out forwards;
+}
+
+@keyframes combo-pop {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+
+#board {
+    display: grid;
+    /* JSでgrid-template-columnsが設定されます */
+    border: 3px solid #333;
+    background-color: #ccc;
+    position: relative; /* タイルを絶対位置で配置するため */
+}
+
+.tile {
+    width: 60px;
+    height: 60px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 40px;
+    cursor: grab;
+    user-select: none;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    box-sizing: border-box;
+    /* 位置のトランジションを追加 */
+    transition: transform 0.2s ease-out, opacity 0.3s ease-in-out; 
+    
+    /* grid-area の代わりに絶対位置を使わない場合: */
+    /* マウスダウンイベントを処理できるようにする */
+    touch-action: none; 
+}
+
+/* 選択/ドラッグ中のタイル */
+.tile.dragging {
+    opacity: 0.8;
+    z-index: 20;
+}
+
+/* 消える時の演出用クラス */
+.tile.match {
+    opacity: 0;
+    transform: scale(0.1);
+}
