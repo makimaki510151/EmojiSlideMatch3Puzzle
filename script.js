@@ -3,6 +3,7 @@ const GRID_SIZE = 8;
 const TILE_SIZE = 62;
 const EMOJIS = ['🍎', '🍌', '🍇', '🍓'];
 const BASE_SCORE = 10;
+// const EASY_MODE_COST, MAX_EASY_MODE_COMBO を削除
 
 // --- DOM要素 ---
 const boardElement = document.getElementById('board');
@@ -10,13 +11,15 @@ const scoreElement = document.getElementById('score');
 const comboDisplayElement = document.getElementById('combo-display');
 const gameOverOverlay = document.getElementById('game-over-overlay');
 const finalScoreElement = document.getElementById('final-score');
+// easyComboButton, modeStatusElement を削除
 
 // --- ゲーム状態 ---
 let board = [];
 let score = 0;
 let isProcessing = false;
 let currentCombo = 0;
-let isGameOver = false; // ゲームオーバーステータスを追加
+let isGameOver = false;
+// isEasyMode, easyModeCombosLeft を削除
 
 // --- スライド操作用の変数 ---
 let startX = 0;
@@ -36,7 +39,7 @@ const audioCtx = new AudioContext();
  * @param {number} decay - 減衰時間 (秒)
  */
 function playSynthSound(frequency, duration, type = 'square', volume = 0.5, decay = 0.1) {
-    if (isGameOver) return; // ゲームオーバー中は再生しない
+    if (isGameOver) return;
 
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
@@ -121,7 +124,7 @@ function createTileElement(emoji, r, c) {
 // --- スライド操作 ---
 
 function handleDragStart(event) {
-    if (isProcessing || isGameOver) return; // ゲームオーバー中は操作不可
+    if (isProcessing || isGameOver) return;
 
     const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
     const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
@@ -138,9 +141,10 @@ function handleDragStart(event) {
     document.addEventListener('touchend', handleDragEnd);
 }
 
+/**
+ * ドラッグ移動 (前回のタッチ操作最適化ロジックを維持)
+ */
 function handleDragMove(event) {
-    // 画面全体のスライドを防ぎたいのは、主にタイルをスライドしようとした時 (水平方向)
-
     const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
     const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
 
@@ -148,14 +152,11 @@ function handleDragMove(event) {
     const deltaY = clientY - startY;
 
     const isHorizontalMove = Math.abs(deltaX) > Math.abs(deltaY);
-    const threshold = 5; // 微細な動きを無視するための閾値
+    const threshold = 5;
 
     if (event.cancelable && (isHorizontalMove && Math.abs(deltaX) > threshold)) {
-        // 水平方向への動きが支配的かつ閾値を超えている場合、
-        // 意図的なタイル操作とみなし、OSのデフォルト動作（画面スクロール）を停止
         event.preventDefault();
     }
-    // 垂直方向の動きが支配的な場合はpreventDefault()を呼ばず、画面のスクロールを許可する
 }
 
 function handleDragEnd(event) {
@@ -246,9 +247,6 @@ function swapTiles(r1, c1, r2, c2) {
 
 // --- ゲームロジック ---
 
-/**
- * 交換後のマッチング、消去、落下、補充のサイクル
- */
 function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, originalC2 = -1) {
     const minMatch = 3;
     const matches = checkAllMatches(minMatch);
@@ -259,9 +257,9 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
         updateComboDisplay(currentCombo);
 
         if (currentCombo > 1) {
-            SE.combo(currentCombo); // コンボSE
+            SE.combo(currentCombo);
         } else {
-            SE.match(matches.length); // マッチSE
+            SE.match(matches.length);
         }
 
         removeMatches(matches);
@@ -281,7 +279,6 @@ function swapMatchCycle(originalR1 = -1, originalC1 = -1, originalR2 = -1, origi
     } else {
         // マッチが存在しない場合
         if (currentCombo === 0 && originalR1 !== -1) {
-            // 最初のスワップでマッチしなかった場合、元に戻す
             const r1 = originalR1;
             const c1 = originalC1;
             const r2 = originalR2;
@@ -306,32 +303,26 @@ function canMove() {
         for (let c = 0; c < GRID_SIZE; c++) {
             // 右隣とのスワップをシミュレート
             if (c < GRID_SIZE - 1) {
-                // 配列の一時的なスワップ
                 [board[r][c], board[r][c + 1]] = [board[r][c + 1], board[r][c]];
                 if (checkAllMatches(minMatch).length > 0) {
-                    // 元に戻す
                     [board[r][c], board[r][c + 1]] = [board[r][c + 1], board[r][c]];
-                    return true; // マッチ可能なスワップが見つかった
+                    return true;
                 }
-                // 元に戻す
                 [board[r][c], board[r][c + 1]] = [board[r][c + 1], board[r][c]];
             }
 
             // 下隣とのスワップをシミュレート
             if (r < GRID_SIZE - 1) {
-                // 配列の一時的なスワップ
                 [board[r][c], board[r + 1][c]] = [board[r + 1][c], board[r][c]];
                 if (checkAllMatches(minMatch).length > 0) {
-                    // 元に戻す
                     [board[r][c], board[r + 1][c]] = [board[r + 1][c], board[r][c]];
-                    return true; // マッチ可能なスワップが見つかった
+                    return true;
                 }
-                // 元に戻す
                 [board[r][c], board[r + 1][c]] = [board[r + 1][c], board[r][c]];
             }
         }
     }
-    return false; // マッチ可能なスワップがない
+    return false;
 }
 
 /**
@@ -342,19 +333,16 @@ function checkGameOver() {
 
     if (!canMove()) {
         isGameOver = true;
-        SE.gameOver(); // ゲームオーバーSE
+        SE.gameOver();
 
-        // オーバーレイを表示
+        // オーバーレイを表示 (CSSでdisplay:none;が設定されていることを前提とする)
         gameOverOverlay.style.display = 'flex';
         finalScoreElement.textContent = score;
-
-        // ボード上の操作を無効化 (isProcessing / isGameOver フラグで既に制御)
     }
 }
 
 /**
  * ボード全体の全てのマッチをチェックし、一致したタイルの座標リストを返す
- * @param {number} minLen - 最小マッチ長 (常に3)
  */
 function checkAllMatches(minLen = 3) {
     const matches = [];
